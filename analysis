@@ -1,0 +1,147 @@
+#1.	What was the total quantity sold for all products?
+select * from sales;
+use balanced_tree_db;
+
+select prod_id , sum(qty) Total_Quantity_Sold from sales
+group by prod_id;
+
+## 2.	What is the total generated revenue for all products before discounts?
+
+select prod_id, sum(price*qty) TotalGeneratedReveneu from sales
+group by prod_id;
+
+## 3.	What was the total discount amount for allproducts?
+SELECT prod_id,SUM(((price * (1 - discount * 0.01))) * qty) AS TotalDiscountAmount
+FROM sales
+group by prod_id;
+
+## Transaction Analysis
+
+##1.	How many unique transactions were there?
+
+select count(distinct txn_id) unique_transactions 
+from sales;
+
+##2.	What is the average unique products purchased in each transaction?
+
+SELECT txn_id, COUNT(DISTINCT prod_id) AS unique_products
+FROM sales
+GROUP BY txn_id
+ORDER BY COUNT(DISTINCT prod_id) desc;
+
+SELECT AVG(discount) AS avg_discount_per_transaction
+FROM sales;
+
+## 3.	What are the 25th, 50th and 75th percentile values for the revenue per transaction?
+
+
+
+
+#4.	What is the average discount value per transaction?
+select txn_id, avg(DiscountAmount) AverageDiscountAmount
+from
+(SELECT txn_id,SUM(((price * (1 - discount * 0.01))) * qty) AS DiscountAmount
+FROM sales
+group by txn_id)a
+group by txn_id;
+
+## 5.	What is the percentage split of all transactions for members vs non-members?
+select member ,TransactionTime*100/(select count(distinct txn_id) from sales) PrecentageOfTransaction from
+(SELECT member,count(distinct txn_id) AS TransactionTime
+FROM sales
+group by member)a
+group by member;
+
+## 6.	What is the average revenue for member transactions and non-member transactions?
+
+select member ,ReveneuGenerated/(select count(*) from sales) AverageRevenue from
+(SELECT member,sum(price*qty) AS ReveneuGenerated
+FROM sales
+group by member)a
+group by member;
+
+
+###Product Analysis
+#1.	What are the top 3 products by total revenue before discount?
+select * from product_prices;
+
+SELECT a.*, RANK() OVER (ORDER BY a.TotalGeneratedReveneu) AS rnk
+FROM (
+    SELECT prod_id, SUM(price *qty) AS TotalGeneratedReveneu
+    FROM sales
+    GROUP BY prod_id
+) AS a
+ORDER BY rnk DESC LIMIT 3;   
+
+
+#2.	What is the total quantity, revenue and discount for each segment?
+
+select sum(a.qty) as Total_Quantity,sum(a.price * a.qty) as Total_Reveneu, 
+SUM((a.price * (1 - a.discount * 0.01)) * a.qty)as Total_Discount_Amount ,
+b.segment_id from sales a 
+inner join product_details b on a.prod_id = b.prod_id
+group by segment_id
+order by Total_Reveneu desc;
+
+## 3.	What is the top selling product for each segment?
+
+select d.segment_id, d.product_name, d.rnk from
+(select c.* ,rank() over(partition by segment_id order by Total_Quantity) as rnk from
+(select sum(a.qty) as Total_Quantity,
+b.segment_id ,b.product_name from sales a 
+right join product_details b on a.prod_id = b.prod_id
+group by segment_id,product_name)c)d
+where Total_Quantity is not null and rnk=1;
+
+##4.	What is the total quantity, revenue and discount for each category?
+
+select sum(a.qty) as Total_Quantity,sum(a.price * a.qty) as Total_Reveneu, 
+SUM((a.price * (1 - a.discount * 0.01)) * a.qty)as Total_Discount_Amount ,
+b.category_id from sales a 
+inner join product_details b on a.prod_id = b.prod_id
+group by category_id
+order by Total_Reveneu desc;
+
+## 5.	What is the top selling product for each category?
+
+select d.category_id, d.product_name, d.rnk from
+(select c.* ,rank() over(partition by category_id order by Total_Quantity) as rnk from
+(select sum(a.qty) as Total_Quantity,
+b.category_id ,b.product_name from sales a 
+right join product_details b on a.prod_id = b.prod_id
+group by category_id,product_name)c)d
+where rnk=1;
+
+##6.	What is the percentage split of revenue by product for each segment?
+
+SELECT c.*, 
+       Total_Revenue * 100 / Total_Sales AS Revenue_Percentage 
+FROM (
+    SELECT SUM(a.price * a.qty) AS Total_Revenue, 
+           b.segment_id, 
+           b.product_name,
+           (SELECT SUM(price * qty) FROM sales) AS Total_Sales
+    FROM sales a 
+    RIGHT JOIN product_details b ON a.prod_id = b.prod_id 
+    GROUP BY segment_id, product_name
+) c;
+
+
+## as per product
+
+select c.product_name , Total_Reveneu*100/(Select sum(price*qty) from sales) as Reveneu_Percentage from
+(select sum(a.price*a.qty) as Total_Reveneu,
+b.segment_id ,b.product_name from sales a 
+right join product_details b on a.prod_id = b.prod_id
+group by segment_id,product_name)c;
+
+# 9.	What is the total transaction “penetration” for each product? (hint: penetration = number of 
+## transactions where at least 1 quantity of a product was purchased divided by total number of transactions)
+
+
+SELECT prod_id,
+    COUNT(DISTINCT CASE WHEN qty > 0 THEN txn_id END) / COUNT(DISTINCT txn_id) AS penetration
+FROM sales
+GROUP BY prod_id;
+
+## 10.	What is the most common combination of at least 1 quantity of any 3 products in a 1 single transaction?
